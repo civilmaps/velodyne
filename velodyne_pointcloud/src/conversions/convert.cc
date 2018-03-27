@@ -62,15 +62,31 @@ namespace velodyne_pointcloud
     velodyne_rawdata::VPointCloud::Ptr
       outMsg(new velodyne_rawdata::VPointCloud());
     // outMsg's header is a pcl::PCLHeader, convert it before stamp assignment
-    outMsg->header.stamp = pcl_conversions::toPCL(scanMsg->header).stamp;
     outMsg->header.frame_id = scanMsg->header.frame_id;
     outMsg->height = 1;
 
+    double first_packet_timestamp, last_packet_timestamp;
     // process each packet provided by the driver
     for (size_t i = 0; i < scanMsg->packets.size(); ++i)
       {
-        data_->unpack(scanMsg->packets[i], *outMsg);
+        double packet_timestamp;
+        data_->unpack(scanMsg->packets[i], *outMsg, packet_timestamp);
+        if (i==0) {
+          first_packet_timestamp = packet_timestamp;
+        }
+
+        if (i == scanMsg->packets.size()-1) {
+          last_packet_timestamp = packet_timestamp;
+        }
+
       }
+
+    ros::Time new_timestamp = ros::Time((last_packet_timestamp +first_packet_timestamp)/2.0);
+ 
+    pcl_conversions::toPCL(new_timestamp, outMsg->header.stamp);
+
+    // ROS_LOG("new header timestamp %lf ", new_timestamp);
+
 
     // publish the accumulated cloud message
     ROS_DEBUG_STREAM("Publishing " << outMsg->height * outMsg->width

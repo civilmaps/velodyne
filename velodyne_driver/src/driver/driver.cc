@@ -208,7 +208,7 @@ bool VelodyneDriver::poll(void)
   }
 
   // publish message using time of last packet read
-  ROS_DEBUG("Publishing a full Velodyne scan.");
+  // ROS_INFO("Publishing a full Velodyne scan. %lf", scan->packets.back().stamp.toSec() - scan->packets.front().stamp.toSec());
   scan->header.stamp = scan->packets.back().stamp;
   scan->header.frame_id = config_.frame_id;
   output_.publish(scan);

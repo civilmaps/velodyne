@@ -91,13 +91,15 @@ namespace velodyne_pointcloud
         pcl_conversions::toPCL(header, inPc_.header);
 
         // unpack the raw data
-        data_->unpack(scanMsg->packets[next], inPc_);
+        double packet_timestamp;
+        data_->unpack(scanMsg->packets[next], inPc_, packet_timestamp);
 
         // clear transform point cloud for this packet
         tfPc_.points.clear();           // is this needed?
         tfPc_.width = 0;
         tfPc_.height = 1;
-        header.stamp = scanMsg->packets[next].stamp;
+        // header.stamp = scanMsg->packets[next].stamp;
+        header.stamp = ros::Time(packet_timestamp);
         pcl_conversions::toPCL(header, tfPc_.header);
         tfPc_.header.frame_id = config_.frame_id;
 

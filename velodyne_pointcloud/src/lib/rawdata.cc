@@ -137,6 +137,67 @@ namespace velodyne_rawdata
       return 0;
   }
 
+bool does_udp_hour_match_velodyne(double packet_timestamp, unsigned int velodyne_timestamp) {
+    /*Confirms the udp timestamps hour makes sense with the input velodyne timestamp.
+
+    The velodyne timestamp is given as microseconds from the top of the hour
+    There is some drift between the packet_timestamp and the gps time the velodyne uses.
+    If the velodyne time is 12:01 and the udp timestamp is 11:59, the velodyne_timestamp
+    will equal 1 minute and and udp timestamp will be 59 minutes past the hour.
+
+    Assuming the max difference between the clocks is less than a few seconds,
+    if there is a difference greater than that, we know it is because of the hour
+    rollover
+    */
+    double top_of_hour = packet_timestamp - fmod(packet_timestamp, 3600);
+    double microseconds_from_top_of_hour = (packet_timestamp - top_of_hour)*1000000;
+    double time_difference = abs(microseconds_from_top_of_hour - velodyne_timestamp);
+
+    if (time_difference > MAX_TIME_DIFFERENCE) {
+        return false;
+    } else {
+        return true;
+    }
+}
+
+double get_correct_top_of_hour(double packet_timestamp, unsigned int velodyne_timestamp) {
+    /*Returns the correct hour
+    The velodyne uses gps time which is more accurate than the packet_timestamp.
+    If the velodyne time is 12:01 the velodyne_timestamp will equal 1 minute.
+    If the packet_timestamp equals 11:59 we can assume the true hour is 12:00
+    */
+    
+    double top_of_hour = packet_timestamp - fmod(packet_timestamp, 3600);
+    double microseconds_from_top_of_hour = (packet_timestamp - top_of_hour)*1000000;
+    double time_difference = microseconds_from_top_of_hour - velodyne_timestamp;
+
+    if (time_difference > 0) {
+    // Velodyne time says udp top of hour is behind (e.g. udp=12:59, velodyne=1:01)
+        top_of_hour = packet_timestamp + (3600 - fmod(packet_timestamp, 3600));
+    } else if (time_difference < 0) {
+    // Velodyne time says udp top of hour is ahead (e.g. udp=12:01, velodyne=11:59)
+        top_of_hour = packet_timestamp - fmod(packet_timestamp, 3600) - 3600;
+    } else {
+        //log.warning('This shouldnt happen. Current pcap reader should not call this if the udp hour and velodyne hour match')
+        top_of_hour = packet_timestamp - fmod(packet_timestamp, 3600);
+    }
+    return top_of_hour;
+}
+
+double compute_timestamp(double packet_timestamp, unsigned int top_hour_timestamp) {
+    double top_of_hour;
+    
+    if (does_udp_hour_match_velodyne(packet_timestamp, top_hour_timestamp)) {
+        top_of_hour = packet_timestamp - fmod(packet_timestamp, 3600);
+    } else {
+        top_of_hour = get_correct_top_of_hour(packet_timestamp, top_hour_timestamp);
+    }
+
+    double seconds_from_top_of_hour = top_hour_timestamp/1000000.0;
+
+    return top_of_hour + seconds_from_top_of_hour;
+}
+
 
   /** @brief convert raw packet to point cloud
    *
@@ -144,18 +205,21 @@ namespace velodyne_rawdata
    *  @param pc shared pointer to point cloud (points are appended)
    */
   void RawData::unpack(const velodyne_msgs::VelodynePacket &pkt,
-                       VPointCloud &pc)
+                       VPointCloud &pc,
+                       double &packet_timestamp)
   {
     ROS_DEBUG_STREAM("Received packet, time: " << pkt.stamp);
     
     /** special parsing for the VLP16 **/
     if (calibration_.num_lasers == 16)
     {
-      unpack_vlp16(pkt, pc);
+      unpack_vlp16(pkt, pc, packet_timestamp);
       return;
     }
     
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
+    packet_timestamp = compute_timestamp(pkt.stamp.toSec(), raw->gps_timestamp);
+
 
     for (int i = 0; i < BLOCKS_PER_PACKET; i++) {
 
@@ -313,7 +377,8 @@ namespace velodyne_rawdata
    *  @param pc shared pointer to point cloud (points are appended)
    */
   void RawData::unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt,
-                             VPointCloud &pc)
+                             VPointCloud &pc,
+                             double &packet_timestamp)
   {
     float azimuth;
     float azimuth_diff;
@@ -324,6 +389,11 @@ namespace velodyne_rawdata
     float intensity;
 
     const raw_packet_t *raw = (const raw_packet_t *) &pkt.data[0];
+
+    packet_timestamp = compute_timestamp(pkt.stamp.toSec(), raw->gps_timestamp);
+    // ROS_INFO("packet timestamp timestamp %lf", pkt.stamp.toSec());
+    // ROS_INFO("correct timestamp %lf", packet_timestamp);
+
 
     for (int block = 0; block < BLOCKS_PER_PACKET; block++) {
 

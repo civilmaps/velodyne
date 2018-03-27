@@ -92,6 +92,7 @@ namespace velodyne_rawdata
   static const int BLOCKS_PER_PACKET = 12;
   static const int PACKET_STATUS_SIZE = 4;
   static const int SCANS_PER_PACKET = (SCANS_PER_BLOCK * BLOCKS_PER_PACKET);
+  static const long MAX_TIME_DIFFERENCE = 1000000 * 60 * 29; // microseconds
 
   /** \brief Raw Velodyne packet.
    *
@@ -105,12 +106,22 @@ namespace velodyne_rawdata
    *
    *  status has either a temperature encoding or the microcode level
    */
+
   typedef struct raw_packet
   {
     raw_block_t blocks[BLOCKS_PER_PACKET];
-    uint16_t revolution;
-    uint8_t status[PACKET_STATUS_SIZE]; 
+    unsigned int gps_timestamp;
+    unsigned char blank1;
+    unsigned char blank2;
   } raw_packet_t;
+
+
+  // typedef struct raw_packet
+  // {
+  //   raw_block_t blocks[BLOCKS_PER_PACKET];
+  //   uint16_t revolution;
+  //   uint8_t status[PACKET_STATUS_SIZE]; 
+  // } raw_packet_t;
 
   /** \brief Velodyne data conversion class */
   class RawData
@@ -146,7 +157,7 @@ namespace velodyne_rawdata
      */
     int setupOffline(std::string calibration_file, double max_range_, double min_range_);
 
-    void unpack(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
+    void unpack(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc, double &packet_timestamp);
     
     void setParameters(double min_range, double max_range, double view_direction,
                        double view_width);
@@ -174,7 +185,7 @@ namespace velodyne_rawdata
     float cos_rot_table_[ROTATION_MAX_UNITS];
     
     /** add private function to handle the VLP16 **/ 
-    void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc);
+    void unpack_vlp16(const velodyne_msgs::VelodynePacket &pkt, VPointCloud &pc, double &packet_timestamp);
 
     /** in-line test whether a point is in range */
     bool pointInRange(float range)
